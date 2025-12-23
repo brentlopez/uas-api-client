@@ -15,6 +15,7 @@ from .exceptions import (
     UnityTokenExpiredError,
 )
 from .models.api.product_response import ProductResponse
+from .models.api.purchases_response import PurchasesResponse
 from .models.domain.asset import UnityAsset
 
 
@@ -164,6 +165,92 @@ class UnityClient:
                 on_progress(f"Asset '{asset.title}' fetched successfully")
 
             return asset
+
+        except requests.exceptions.Timeout:
+            raise UnityNetworkError(f"Request timeout after {self.timeout}s")
+        except requests.exceptions.ConnectionError as e:
+            raise UnityNetworkError(f"Connection error: {e}")
+        except requests.exceptions.RequestException as e:
+            raise UnityNetworkError(f"Network error: {e}")
+
+    def get_library(
+        self,
+        offset: int = 0,
+        limit: int = 0,
+        search_text: Optional[str] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
+    ) -> PurchasesResponse:
+        """Get user's Asset Store library/purchases.
+
+        Returns all assets the user owns/has access to in their Asset Store library.
+        Use the package_id from each PurchaseItem to fetch full asset details with get_asset().
+
+        Endpoint reference: Unity Editor uses `/-/api/purchases` with query parameters.
+        See: https://github.com/Unity-Technologies/UnityCsReference/blob/master/Modules/PackageManagerUI/Editor/Services/AssetStore/AssetStoreRestAPI.cs
+
+        Args:
+            offset: Pagination offset (default: 0)
+            limit: Number of results to return (default: 0 = all)
+            search_text: Search query to filter results (default: None)
+            on_progress: Optional callback for progress updates
+
+        Returns:
+            PurchasesResponse containing library information
+
+        Raises:
+            UnityTokenExpiredError: If access token is expired
+            UnityAuthenticationError: If authentication fails
+            UnityAPIError: If API request fails
+            UnityNetworkError: If network error occurs
+
+        Example:
+            ```python
+            # Get all library items
+            library = client.get_library()
+            print(f"Total assets: {library.total}")
+            
+            # Get paginated results
+            page = client.get_library(offset=0, limit=10)
+            print(f"First 10 of {page.total} assets")
+            
+            # Search library
+            results = client.get_library(search_text="fantasy")
+            print(f"Found {len(results.results)} fantasy assets")
+            
+            # Get package IDs
+            package_ids = library.get_package_ids()
+            
+            # Fetch full details for each asset
+            for package_id in package_ids[:5]:  # First 5 assets
+                asset = client.get_asset(str(package_id))
+                print(f"{asset.title} - {asset.publisher}")
+            ```
+        """
+        self._check_token_expiration()
+        self._apply_rate_limit()
+
+        if on_progress:
+            on_progress("Fetching Asset Store library...")
+
+        # Construct purchases endpoint URL with query parameters
+        base_url = self.endpoints.product_api.replace("/product", "")
+        url = f"{base_url}/purchases?offset={offset}&limit={limit}"
+        
+        if search_text:
+            url += f"&searchText={search_text}"
+
+        try:
+            response = self.session.get(url, timeout=self.timeout)
+            self._handle_response_errors(response)
+
+            # Parse response
+            data = response.json()
+            purchases = PurchasesResponse.from_dict(data)
+
+            if on_progress:
+                on_progress(f"Found {purchases.total} assets in library")
+
+            return purchases
 
         except requests.exceptions.Timeout:
             raise UnityNetworkError(f"Request timeout after {self.timeout}s")
