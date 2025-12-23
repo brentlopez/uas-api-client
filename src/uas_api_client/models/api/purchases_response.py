@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -13,7 +13,7 @@ class CategoryCount:
     count: int
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CategoryCount":
+    def from_dict(cls, data: dict[str, Any]) -> "CategoryCount":
         """Create CategoryCount from API response dict.
 
         Args:
@@ -39,11 +39,11 @@ class PurchaseItem:
     grant_time: datetime
     is_hidden: bool
     is_publisher_asset: bool
-    order_id: Optional[str] = None
-    tagging: List[str] = field(default_factory=list)
+    order_id: str | None = None
+    tagging: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PurchaseItem":
+    def from_dict(cls, data: dict[str, Any]) -> "PurchaseItem":
         """Create PurchaseItem from API response dict.
 
         Args:
@@ -68,13 +68,13 @@ class PurchaseItem:
 class PurchasesResponse:
     """Response from /purchases endpoint containing user's Asset Store library."""
 
-    results: List[PurchaseItem]
+    results: list[PurchaseItem]
     total: int
-    categories: List[CategoryCount] = field(default_factory=list)
-    publisher_suggest: List[str] = field(default_factory=list)
+    categories: list[CategoryCount] = field(default_factory=list)
+    publisher_suggest: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PurchasesResponse":
+    def from_dict(cls, data: dict[str, Any]) -> "PurchasesResponse":
         """Create PurchasesResponse from API response dict.
 
         Args:
@@ -90,7 +90,7 @@ class PurchasesResponse:
             publisher_suggest=data.get("publisherSuggest", []),
         )
 
-    def get_package_ids(self, include_hidden: bool = False) -> List[int]:
+    def get_package_ids(self, include_hidden: bool = False) -> list[int]:
         """Get list of package IDs from purchases.
 
         Args:
@@ -103,7 +103,7 @@ class PurchasesResponse:
             return [item.package_id for item in self.results]
         return [item.package_id for item in self.results if not item.is_hidden]
 
-    def filter_by_category(self, category_name: str) -> List[PurchaseItem]:
+    def filter_by_category(self, category_name: str) -> list[PurchaseItem]:
         """Filter purchases by category name.
 
         Note: This requires fetching full asset details to get accurate categories.

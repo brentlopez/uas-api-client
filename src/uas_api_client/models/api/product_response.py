@@ -1,7 +1,7 @@
 """API response models for Unity Asset Store product endpoint."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..domain.asset import UnityAsset
 
@@ -18,17 +18,17 @@ class ProductResponse:
     package_id: str
     name: str
     slug: str
-    description: Optional[str] = None
-    origin_price: Optional[str] = None
-    uploads: Optional[Dict[str, Any]] = None
-    category: Optional[Dict[str, Any]] = None
-    product_publisher: Optional[Dict[str, Any]] = None
-    main_image: Optional[Dict[str, Any]] = None
-    images: Optional[List[Dict[str, Any]]] = None
-    rating: Optional[Dict[str, Any]] = None
+    description: str | None = None
+    origin_price: str | None = None
+    uploads: dict[str, Any] | None = None
+    category: dict[str, Any] | None = None
+    product_publisher: dict[str, Any] | None = None
+    main_image: dict[str, Any] | None = None
+    images: list[dict[str, Any]] | None = None
+    rating: dict[str, Any] | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProductResponse":
+    def from_dict(cls, data: dict[str, Any]) -> "ProductResponse":
         """Create ProductResponse from API response dictionary.
 
         Args:

@@ -1,38 +1,43 @@
 """Domain model for Unity Asset."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import List, Optional
+
+from asset_marketplace_core import BaseAsset
 
 
 @dataclass
-class UnityAsset:
+class UnityAsset(BaseAsset):
     """Represents a Unity Asset Store asset.
 
     This is the domain model containing business logic for Unity assets.
     It's separate from the API response types to keep concerns separated.
+
+    Extends BaseAsset from asset-marketplace-client-core and adds Unity-specific
+    fields and methods.
+
+    Inherited from BaseAsset:
+        uid: Unique identifier
+        title: Asset title
+        description: Asset description
+        created_at: Creation timestamp
+        updated_at: Last update timestamp
+        raw_data: Complete raw API response data
     """
 
-    uid: str
-    title: str
-    description: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
     # Unity-specific fields
-    category: Optional[str] = None
-    publisher: Optional[str] = None
-    publisher_id: Optional[str] = None
-    unity_version: Optional[str] = None
-    package_size: Optional[int] = None
-    rating: Optional[float] = None
-    price: Optional[float] = None
-    dependencies: List[str] = field(default_factory=list)
+    category: str | None = None
+    publisher: str | None = None
+    publisher_id: str | None = None
+    unity_version: str | None = None
+    package_size: int | None = None
+    rating: float | None = None
+    price: float | None = None
+    dependencies: list[str] = field(default_factory=list)
 
     # Download information
-    download_url: Optional[str] = None
-    download_s3_key: Optional[str] = None
-    asset_count: Optional[int] = None
+    download_url: str | None = None
+    download_s3_key: str | None = None
+    asset_count: int | None = None
 
     def is_compatible_with(self, unity_version: str) -> bool:
         """Check if asset is compatible with given Unity version.
@@ -86,7 +91,7 @@ class UnityAsset:
         """
         return len(self.dependencies) > 0
 
-    def get_download_size_mb(self) -> Optional[float]:
+    def get_download_size_mb(self) -> float | None:
         """Get package size in megabytes.
 
         Returns:

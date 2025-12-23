@@ -1,10 +1,12 @@
 """Unity Asset Store API client."""
 
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any
 
 import requests
+from asset_marketplace_core import DownloadResult, MarketplaceClient, ProgressCallback
 
 from .auth import UnityAuthProvider
 from .exceptions import (
@@ -17,10 +19,14 @@ from .exceptions import (
 from .models.api.product_response import ProductResponse
 from .models.api.purchases_response import PurchasesResponse
 from .models.domain.asset import UnityAsset
+from .models.domain.collection import UnityCollection
+from .utils import safe_download_path
 
 
-class UnityClient:
+class UnityClient(MarketplaceClient):
     """Client for interacting with Unity Asset Store API.
+
+    Extends MarketplaceClient from asset-marketplace-client-core.
 
     This client provides methods to fetch assets, download packages,
     and manage Unity Asset Store content programmatically.
@@ -38,7 +44,7 @@ class UnityClient:
             asset = client.get_asset("330726")
             print(f"Asset: {asset.title}")
             print(f"Size: {asset.get_download_size_mb():.2f} MB")
-            
+
             # Download asset
             path = client.download_asset(asset, output_dir="./downloads")
             print(f"Downloaded to: {path}")
@@ -63,7 +69,7 @@ class UnityClient:
         self.timeout = timeout
         self.session = auth.get_session()
         self.endpoints = auth.get_endpoints()
-        self._last_request_time: Optional[float] = None
+        self._last_request_time: float | None = None
 
     def _check_token_expiration(self) -> None:
         """Check if access token is expired and raise error if so.
@@ -72,9 +78,7 @@ class UnityClient:
             UnityTokenExpiredError: If access token is expired
         """
         if self.auth.is_token_expired():
-            raise UnityTokenExpiredError(
-                "Access token has expired. Please refresh tokens."
-            )
+            raise UnityTokenExpiredError("Access token has expired. Please refresh tokens.")
 
     def _apply_rate_limit(self) -> None:
         """Apply rate limiting delay between requests."""
@@ -88,9 +92,17 @@ class UnityClient:
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit - close session."""
-        self.session.close()
+        self.close()
+
+    def close(self) -> None:
+        """Close the client and clean up resources.
+
+        Implements MarketplaceClient.close().
+        """
+        if hasattr(self, "session"):
+            self.session.close()
 
     def _handle_response_errors(self, response: requests.Response) -> None:
         """Handle HTTP response errors.
@@ -119,10 +131,10 @@ class UnityClient:
             raise UnityAPIError(
                 f"API error: {e}",
                 status_code=e.response.status_code if e.response else None,
-            )
+            ) from e
 
     def get_asset(
-        self, asset_id: str, on_progress: Optional[Callable[[str], None]] = None
+        self, asset_id: str, on_progress: Callable[[str], None] | None = None
     ) -> UnityAsset:
         """Get asset information from Unity Asset Store.
 
@@ -166,19 +178,19 @@ class UnityClient:
 
             return asset
 
-        except requests.exceptions.Timeout:
-            raise UnityNetworkError(f"Request timeout after {self.timeout}s")
+        except requests.exceptions.Timeout as e:
+            raise UnityNetworkError(f"Request timeout after {self.timeout}s") from e
         except requests.exceptions.ConnectionError as e:
-            raise UnityNetworkError(f"Connection error: {e}")
+            raise UnityNetworkError(f"Connection error: {e}") from e
         except requests.exceptions.RequestException as e:
-            raise UnityNetworkError(f"Network error: {e}")
+            raise UnityNetworkError(f"Network error: {e}") from e
 
     def get_library(
         self,
         offset: int = 0,
         limit: int = 0,
-        search_text: Optional[str] = None,
-        on_progress: Optional[Callable[[str], None]] = None,
+        search_text: str | None = None,
+        on_progress: Callable[[str], None] | None = None,
     ) -> PurchasesResponse:
         """Get user's Asset Store library/purchases.
 
@@ -208,18 +220,18 @@ class UnityClient:
             # Get all library items
             library = client.get_library()
             print(f"Total assets: {library.total}")
-            
+
             # Get paginated results
             page = client.get_library(offset=0, limit=10)
             print(f"First 10 of {page.total} assets")
-            
+
             # Search library
             results = client.get_library(search_text="fantasy")
             print(f"Found {len(results.results)} fantasy assets")
-            
+
             # Get package IDs
             package_ids = library.get_package_ids()
-            
+
             # Fetch full details for each asset
             for package_id in package_ids[:5]:  # First 5 assets
                 asset = client.get_asset(str(package_id))
@@ -235,7 +247,7 @@ class UnityClient:
         # Construct purchases endpoint URL with query parameters
         base_url = self.endpoints.product_api.replace("/product", "")
         url = f"{base_url}/purchases?offset={offset}&limit={limit}"
-        
+
         if search_text:
             url += f"&searchText={search_text}"
 
@@ -252,76 +264,150 @@ class UnityClient:
 
             return purchases
 
-        except requests.exceptions.Timeout:
-            raise UnityNetworkError(f"Request timeout after {self.timeout}s")
+        except requests.exceptions.Timeout as e:
+            raise UnityNetworkError(f"Request timeout after {self.timeout}s") from e
         except requests.exceptions.ConnectionError as e:
-            raise UnityNetworkError(f"Connection error: {e}")
+            raise UnityNetworkError(f"Connection error: {e}") from e
         except requests.exceptions.RequestException as e:
-            raise UnityNetworkError(f"Network error: {e}")
+            raise UnityNetworkError(f"Network error: {e}") from e
+
+    def get_collection(self, **kwargs: Any) -> UnityCollection:
+        """Get user's Asset Store library as a collection.
+
+        Implements MarketplaceClient.get_collection().
+
+        This method maps to get_library() and converts PurchasesResponse
+        to UnityCollection with minimal asset data.
+
+        Args:
+            **kwargs: Passed to get_library() (offset, limit, search_text, on_progress)
+
+        Returns:
+            UnityCollection with minimal asset information from purchases
+
+        Raises:
+            UnityTokenExpiredError: If access token is expired
+            UnityAuthenticationError: If authentication fails
+            UnityAPIError: If API request fails
+            UnityNetworkError: If network error occurs
+        """
+        # Get purchases response
+        purchases = self.get_library(**kwargs)
+
+        # Convert PurchaseItems to minimal UnityAsset objects
+        assets = [
+            UnityAsset(
+                uid=str(item.package_id),
+                title=item.display_name,
+                created_at=item.grant_time,
+                raw_data={"purchase_item": vars(item)},
+            )
+            for item in purchases.results
+        ]
+
+        return UnityCollection(assets=assets, total_count=purchases.total)
 
     def download_asset(
         self,
-        asset: UnityAsset,
-        output_dir: str = ".",
-        on_progress: Optional[Callable[[str], None]] = None,
-    ) -> Path:
+        asset_uid: str,
+        output_dir: str | Path,
+        progress_callback: ProgressCallback | None = None,
+        **kwargs: Any,
+    ) -> DownloadResult:
         """Download asset package from CDN.
+
+        Implements MarketplaceClient.download_asset() with Unity-specific behavior.
 
         Note: Downloaded packages are AES encrypted. Use uas-adapter
         package for handling encrypted packages.
 
         Args:
-            asset: UnityAsset to download
+            asset_uid: Unique identifier for the asset
             output_dir: Directory to save the downloaded file
-            on_progress: Optional callback for progress updates
+            progress_callback: Optional callback for progress updates
+            **kwargs: Optional kwargs including:
+                - on_progress: Legacy callback (Callable[[str], None])
 
         Returns:
-            Path to downloaded file
+            DownloadResult with success status, files, and metadata
 
         Raises:
-            UnityNotFoundError: If asset has no download URL
+            UnityNotFoundError: If asset not found or has no download URL
             UnityNetworkError: If download fails
         """
-        if not asset.download_url:
-            raise UnityNotFoundError(
-                f"Asset '{asset.title}' has no download URL. "
-                "Fetch asset info with get_asset() first."
-            )
-
-        self._apply_rate_limit()
-
-        if on_progress:
-            on_progress(f"Downloading '{asset.title}'...")
-
-        # Create output directory
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        # Create filename
-        filename = f"{asset.uid}.unitypackage.encrypted"
-        file_path = output_path / filename
+        # Support legacy on_progress callback
+        on_progress = kwargs.get("on_progress")
 
         try:
+            # Fetch asset info to get download URL
+            if on_progress:
+                on_progress(f"Fetching asset {asset_uid} info...")
+            if progress_callback:
+                progress_callback.on_start(None)
+
+            asset = self.get_asset(asset_uid, on_progress=on_progress)
+
+            if not asset.download_url:
+                error_msg = f"Asset '{asset.title}' has no download URL"
+                return DownloadResult(success=False, asset_uid=asset_uid, error=error_msg)
+
+            self._apply_rate_limit()
+
+            if on_progress:
+                on_progress(f"Downloading '{asset.title}'...")
+
+            # Create output directory
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+
+            # Create secure filename
+            filename = f"{asset.uid}.unitypackage.encrypted"
+            file_path = safe_download_path(output_path, filename)
+
             # CDN downloads don't require authentication
             response = requests.get(asset.download_url, timeout=self.timeout, stream=True)
             response.raise_for_status()
+
+            # Get total size if available
+            total_size = int(response.headers.get("content-length", 0))
+            downloaded = 0
 
             # Write file
             with open(file_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_callback and total_size:
+                            progress_callback.on_progress(downloaded, total_size)
 
             if on_progress:
                 on_progress(f"Downloaded to {file_path}")
+            if progress_callback:
+                progress_callback.on_complete()
 
-            return file_path
+            return DownloadResult(
+                success=True,
+                asset_uid=asset_uid,
+                files=[str(file_path)],
+                metadata={
+                    "unity_version": asset.unity_version,
+                    "package_size": asset.package_size,
+                    "encrypted": True,
+                },
+            )
 
-        except requests.exceptions.Timeout:
-            raise UnityNetworkError(f"Download timeout after {self.timeout}s")
-        except requests.exceptions.ConnectionError as e:
-            raise UnityNetworkError(f"Connection error during download: {e}")
-        except requests.exceptions.RequestException as e:
-            raise UnityNetworkError(f"Download error: {e}")
-        except OSError as e:
-            raise UnityNetworkError(f"File write error: {e}")
+        except UnityNotFoundError as e:
+            if progress_callback:
+                progress_callback.on_error(e)
+            return DownloadResult(success=False, asset_uid=asset_uid, error=f"Asset not found: {e}")
+        except UnityNetworkError as e:
+            if progress_callback:
+                progress_callback.on_error(e)
+            return DownloadResult(success=False, asset_uid=asset_uid, error=f"Network error: {e}")
+        except Exception as e:
+            if progress_callback:
+                progress_callback.on_error(e)
+            return DownloadResult(
+                success=False, asset_uid=asset_uid, error=f"Unexpected error: {e}"
+            )

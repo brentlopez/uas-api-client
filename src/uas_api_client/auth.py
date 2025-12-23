@@ -1,22 +1,29 @@
 """Authentication providers for Unity Asset Store API."""
 
-from abc import ABC, abstractmethod
+import os
+from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from datetime import datetime
+from typing import Any
 
 import requests
+from asset_marketplace_core import AuthProvider, EndpointConfig
 
 
 @dataclass
-class ApiEndpoints:
+class UnityEndpoints(EndpointConfig):
     """Unity Asset Store API endpoints.
-    
+
+    Extends EndpointConfig from asset-marketplace-client-core with
+    Unity-specific endpoint URLs.
+
     Note: Concrete endpoint URLs should be provided by the auth provider.
     This allows the adapter to handle platform-specific endpoint discovery.
     """
 
-    product_api: str
-    cdn_base: str
+    base_url: str = ""  # Override parent to provide default
+    product_api: str = ""
+    cdn_base: str = ""
 
     def get_product_url(self, asset_id: str) -> str:
         """Get URL for asset product info.
@@ -41,11 +48,19 @@ class ApiEndpoints:
         return f"{self.cdn_base}/{download_s3_key}"
 
 
-class UnityAuthProvider(ABC):
-    """Abstract base class for Unity Asset Store authentication providers."""
+# Backward compatibility alias
+ApiEndpoints = UnityEndpoints
+
+
+class UnityAuthProvider(AuthProvider):
+    """Abstract base class for Unity Asset Store authentication providers.
+
+    Extends AuthProvider from asset-marketplace-client-core with Unity-specific
+    token expiration checking.
+    """
 
     @abstractmethod
-    def get_session(self) -> requests.Session:
+    def get_session(self) -> Any:
         """Get authenticated requests session.
 
         Returns:
@@ -54,17 +69,19 @@ class UnityAuthProvider(ABC):
         pass
 
     @abstractmethod
-    def get_endpoints(self) -> ApiEndpoints:
+    def get_endpoints(self) -> UnityEndpoints:
         """Get API endpoints configuration.
 
         Returns:
-            ApiEndpoints instance
+            UnityEndpoints instance
         """
         pass
 
     @abstractmethod
     def is_token_expired(self) -> bool:
         """Check if the current access token is expired.
+
+        Unity-specific method for token expiration checking.
 
         Returns:
             True if token is expired, False otherwise
@@ -77,51 +94,82 @@ class BearerTokenAuthProvider(UnityAuthProvider):
 
     This is the standard authentication method for Unity Asset Store API.
     Tokens can be obtained using the uas-adapter package.
+
+    Security features:
+    - Supports environment variable loading (UNITY_ACCESS_TOKEN)
+    - SSL certificate verification enabled by default
+    - Configurable timeouts
+    - Never logs tokens
     """
 
     def __init__(
         self,
-        access_token: str,
-        endpoints: ApiEndpoints,
-        access_token_expiration: Optional[int] = None,
-        user_agent: Optional[str] = None,
+        access_token: str | None = None,
+        endpoints: UnityEndpoints | None = None,
+        access_token_expiration: int | None = None,
+        user_agent: str | None = None,
+        verify_ssl: bool = True,
+        timeout: tuple[int, int] = (5, 30),
     ) -> None:
         """Initialize Bearer token auth provider.
 
         Args:
-            access_token: OAuth access token
+            access_token: OAuth access token (if None, loads from env var)
             endpoints: API endpoint configuration (provided by adapter)
-            access_token_expiration: Token expiration timestamp (milliseconds since epoch)
-            user_agent: Optional User-Agent header (adapter should provide platform-specific value)
+            access_token_expiration: Token expiration timestamp (ms since epoch)
+            user_agent: Optional User-Agent header (adapter-provided)
+            verify_ssl: SSL verification (default: True, never disable in prod)
+            timeout: Request timeout as (connect_timeout, read_timeout) in secs
+
+        Raises:
+            ValueError: If access_token is None and env var is not set
         """
+        # Load token from environment if not provided
+        if access_token is None:
+            access_token = os.environ.get("UNITY_ACCESS_TOKEN")
+            if not access_token:
+                raise ValueError(
+                    "access_token is required. Pass it directly or set "
+                    "UNITY_ACCESS_TOKEN environment variable."
+                )
+
         self.access_token = access_token
         self.access_token_expiration = access_token_expiration
         self.user_agent = user_agent
-        self._endpoints = endpoints
+        self.verify_ssl = verify_ssl
+        self.timeout = timeout
+        self._endpoints = endpoints or UnityEndpoints(base_url="")
 
     def get_session(self) -> requests.Session:
         """Get authenticated requests session.
 
         Returns:
-            Session configured with Bearer token authentication
+            Session configured with Bearer token authentication and security settings
         """
         session = requests.Session()
+
+        # Security: Enable SSL verification (never disable in production)
+        session.verify = self.verify_ssl
+
+        # Security: Set timeouts to prevent hanging requests
+        # This is applied per-request in the client, stored here for reference
+
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Accept": "application/json",
         }
-        
+
         if self.user_agent:
             headers["User-Agent"] = self.user_agent
-        
+
         session.headers.update(headers)
         return session
 
-    def get_endpoints(self) -> ApiEndpoints:
+    def get_endpoints(self) -> UnityEndpoints:
         """Get API endpoints configuration.
 
         Returns:
-            ApiEndpoints instance
+            UnityEndpoints instance
         """
         return self._endpoints
 
@@ -135,8 +183,13 @@ class BearerTokenAuthProvider(UnityAuthProvider):
             # If we don't have expiration info, assume expired for safety
             return True
 
-        from datetime import datetime
-
         # Token expiration is in milliseconds
         expiration_time = datetime.fromtimestamp(self.access_token_expiration / 1000)
         return datetime.now() >= expiration_time
+
+    def close(self) -> None:
+        """Clean up resources.
+
+        Default implementation does nothing as session is managed by client.
+        """
+        pass

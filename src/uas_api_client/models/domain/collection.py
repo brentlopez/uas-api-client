@@ -1,28 +1,30 @@
 """Domain model for Unity Asset Collection."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+
+from asset_marketplace_core import BaseCollection
 
 from .asset import UnityAsset
 
 
 @dataclass
-class UnityCollection:
+class UnityCollection(BaseCollection):
     """Represents a collection of Unity Asset Store assets.
 
     Provides filtering and search capabilities over a collection of assets.
+
+    Extends BaseCollection from asset-marketplace-client-core and adds Unity-specific
+    filtering and sorting methods.
+
+    Inherited from BaseCollection:
+        assets: List of assets (typed as List[UnityAsset] here)
+        total_count: Total number of assets
+        __len__(): Get number of assets
+        filter(): Generic filter by predicate
+        find_by_uid(): Find asset by unique identifier
     """
 
-    assets: List[UnityAsset] = field(default_factory=list)
-    total_count: Optional[int] = None
-
-    def __len__(self) -> int:
-        """Get number of assets in collection.
-
-        Returns:
-            Number of assets
-        """
-        return len(self.assets)
+    assets: list[UnityAsset] = field(default_factory=list)  # type: ignore[assignment]
 
     def filter_by_category(self, category: str) -> "UnityCollection":
         """Filter assets by category.
@@ -89,7 +91,7 @@ class UnityCollection:
         )
         return UnityCollection(assets=sorted_assets, total_count=self.total_count)
 
-    def get_asset_by_id(self, asset_id: str) -> Optional[UnityAsset]:
+    def get_asset_by_id(self, asset_id: str) -> UnityAsset | None:
         """Get asset by ID from collection.
 
         Args:

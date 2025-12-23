@@ -1,29 +1,27 @@
 [build-system]
-requires = ["setuptools>=68.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "uas-api-client"
-version = "1.0.0"
+version = "2.0.0"
 description = "A clean Python HTTP client library for Unity Asset Store"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "Brent Lopez"},
+    {name = "Brent Lopez", email = "brent@brentlopez.dev"},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
+    "asset-marketplace-client-core>=0.1.0",
     "requests>=2.31.0",
 ]
 
@@ -32,8 +30,8 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "mypy>=1.0.0",
-    "black>=23.0.0",
     "ruff>=0.1.0",
+    "pip-audit>=2.0.0",
 ]
 
 [project.urls]
@@ -41,25 +39,31 @@ Homepage = "https://github.com/brentlopez/uas-api-client"
 Documentation = "https://github.com/brentlopez/uas-api-client#readme"
 Repository = "https://github.com/brentlopez/uas-api-client"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.black]
-line-length = 100
-target-version = ["py37", "py38", "py39", "py310", "py311"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/uas_api_client"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py37"
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.mypy]
-python_version = "3.7"
+python_version = "3.11"
+strict = true
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.uv.sources]
+asset-marketplace-client-core = { path = "../asset-marketplace-client-core", editable = true }
