@@ -8,19 +8,19 @@ from typing import Any
 import requests
 from asset_marketplace_core import DownloadResult, MarketplaceClient, ProgressCallback
 
-from .auth import UnityAuthProvider
-from .exceptions import (
+from ..auth import UnityAuthProvider
+from ..exceptions import (
     UnityAPIError,
     UnityAuthenticationError,
     UnityNetworkError,
     UnityNotFoundError,
     UnityTokenExpiredError,
 )
-from .models.api.product_response import ProductResponse
-from .models.api.purchases_response import PurchasesResponse
-from .models.domain.asset import UnityAsset
-from .models.domain.collection import UnityCollection
-from .utils import safe_download_path
+from ..models.api.product_response import ProductResponse
+from ..models.api.purchases_response import PurchasesResponse
+from ..models.domain.asset import UnityAsset
+from ..models.domain.collection import UnityCollection
+from ..utils import safe_download_path
 
 
 class UnityClient(MarketplaceClient):
@@ -88,7 +88,7 @@ class UnityClient(MarketplaceClient):
                 time.sleep(self.rate_limit_delay - elapsed)
         self._last_request_time = time.time()
 
-    def __enter__(self):
+    def __enter__(self) -> "UnityClient":
         """Context manager entry."""
         return self
 

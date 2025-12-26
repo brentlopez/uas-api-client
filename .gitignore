@@ -37,6 +37,7 @@ env/
 .coverage
 htmlcov/
 .tox/
+.mypy_cache/
 
 # Research (contains reverse-engineering notes - DO NOT PUBLISH)
 docs/

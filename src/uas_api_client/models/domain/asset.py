@@ -68,7 +68,7 @@ class UnityAsset(BaseAsset):
             return True
 
     @staticmethod
-    def _parse_version(version_str: str) -> tuple:
+    def _parse_version(version_str: str) -> tuple[int, int]:
         """Parse Unity version string into (major, minor) tuple.
 
         Args:

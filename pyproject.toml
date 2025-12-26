@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "uas-api-client"
-version = "2.0.0"
+version = "2.1.0"
 description = "A clean Python HTTP client library for Unity Asset Store"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,7 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "asset-marketplace-client-core>=0.1.0",
+    "asset-marketplace-client-core>=0.2.0",
     "requests>=2.31.0",
 ]
 
@@ -29,9 +29,15 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "pip-audit>=2.0.0",
+    "aioresponses>=0.7.6",
+]
+async = [
+    "aiohttp>=3.9.0",
+    "aiofiles>=23.0.0",
 ]
 
 [project.urls]
@@ -64,6 +70,16 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests (require real credentials)",
+]
+asyncio_mode = "auto"
 
 [tool.uv.sources]
 asset-marketplace-client-core = { path = "../asset-marketplace-client-core", editable = true }
+
+[dependency-groups]
+dev = [
+    "types-aiofiles>=25.1.0.20251011",
+    "types-requests>=2.32.4.20250913",
+]

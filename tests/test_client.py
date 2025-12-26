@@ -235,64 +235,94 @@ class TestUnityClient:
         auth = MockAuthProvider()
         client = UnityClient(auth)
         
-        # Create asset with download URL
-        asset = UnityAsset(
-            uid="123456",
-            title="Test Asset",
-            download_url="https://cdn.example.com/download/abc-123"
-        )
+        # Mock get_asset response
+        mock_asset_response = Mock()
+        mock_asset_response.status_code = 200
+        mock_asset_response.json.return_value = {
+            "packageId": "123456",
+            "name": "Test Asset",
+            "uploads": {
+                "2021.3.0f1": {
+                    "downloadS3key": "download/abc-123"
+                }
+            }
+        }
+        client.session.get = Mock(return_value=mock_asset_response)
         
         # Mock download response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.iter_content = Mock(return_value=[b'chunk1', b'chunk2'])
-        mock_requests_get.return_value = mock_response
+        mock_download_response = Mock()
+        mock_download_response.status_code = 200
+        mock_download_response.headers = {"content-length": "1000"}
+        mock_download_response.iter_content = Mock(return_value=[b'chunk1', b'chunk2'])
+        mock_download_response.raise_for_status = Mock()
+        mock_requests_get.return_value = mock_download_response
         
-        # Download
-        result_path = client.download_asset(asset, output_dir="/tmp/test")
+        # Download using asset_uid (v2.0.0+ API)
+        result = client.download_asset("123456", output_dir="/tmp/test")
         
-        # Verify
-        assert isinstance(result_path, Path)
-        assert str(result_path) == "/tmp/test/123456.unitypackage.encrypted"
-        mock_file().write.assert_called()
+        # Verify DownloadResult
+        assert result.success is True
+        assert result.asset_uid == "123456"
+        assert len(result.files) == 1
+        assert "/tmp/test/123456.unitypackage.encrypted" in result.files[0]
 
     def test_download_asset_no_url(self):
-        """Test download without URL raises error."""
+        """Test download without URL returns failure result."""
         auth = MockAuthProvider()
         client = UnityClient(auth)
         
-        asset = UnityAsset(uid="123", title="Test", download_url=None)
+        # Mock get_asset response without download S3 key
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "packageId": "123",
+            "name": "Test",
+            # No uploads/downloadS3key
+        }
+        client.session.get = Mock(return_value=mock_response)
         
-        with pytest.raises(UnityNotFoundError) as exc_info:
-            client.download_asset(asset)
+        result = client.download_asset("123", output_dir="/tmp/test")
         
-        assert "no download url" in str(exc_info.value).lower()
+        assert result.success is False
+        assert "no download url" in result.error.lower()
 
+    @patch('builtins.open', new_callable=mock_open)
     @patch('requests.get')
-    def test_download_asset_with_progress(self, mock_requests_get):
+    def test_download_asset_with_progress(self, mock_requests_get, mock_file):
         """Test download with progress callback."""
         auth = MockAuthProvider()
         client = UnityClient(auth)
         
-        asset = UnityAsset(
-            uid="123",
-            title="Test",
-            download_url="https://cdn.example.com/download/abc"
-        )
+        # Mock get_asset response
+        mock_asset_response = Mock()
+        mock_asset_response.status_code = 200
+        mock_asset_response.json.return_value = {
+            "packageId": "123",
+            "name": "Test",
+            "uploads": {
+                "2021.3.0f1": {
+                    "downloadS3key": "download/abc"
+                }
+            }
+        }
+        client.session.get = Mock(return_value=mock_asset_response)
         
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.iter_content = Mock(return_value=[b'data'])
-        mock_requests_get.return_value = mock_response
+        # Mock download response
+        mock_download_response = Mock()
+        mock_download_response.status_code = 200
+        mock_download_response.headers = {"content-length": "100"}
+        mock_download_response.iter_content = Mock(return_value=[b'data'])
+        mock_download_response.raise_for_status = Mock()
+        mock_requests_get.return_value = mock_download_response
         
         progress_calls = []
         
         def progress_callback(message):
             progress_calls.append(message)
         
-        with patch('builtins.open', mock_open()):
-            client.download_asset(asset, on_progress=progress_callback)
+        result = client.download_asset("123", output_dir="/tmp/test", on_progress=progress_callback)
         
-        assert len(progress_calls) == 2
-        assert "Downloading" in progress_calls[0]
-        assert "Downloaded to" in progress_calls[1]
+        assert result.success is True
+        assert len(progress_calls) >= 2
+        assert any("Fetching" in call for call in progress_calls)
+        assert any("Downloaded to" in call for call in progress_calls)
