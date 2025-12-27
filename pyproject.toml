@@ -75,8 +75,16 @@ markers = [
 ]
 asyncio_mode = "auto"
 
+[tool.dependency-versions]
+# Version tags for GitHub-hosted dependencies
+# Used by scripts/switch-deps.sh when switching from local to GitHub mode
+github-user = "brentlopez"
+asset-marketplace-client-core = "v0.2.0"
+
 [tool.uv.sources]
-asset-marketplace-client-core = { path = "../asset-marketplace-client-core", editable = true }
+# GitHub dependencies (default for distribution)
+# Use ./scripts/switch-deps.sh local to switch to local paths for development
+asset-marketplace-client-core = { git = "https://github.com/brentlopez/asset-marketplace-client-core.git", tag = "v0.2.0" }
 
 [dependency-groups]
 dev = [
